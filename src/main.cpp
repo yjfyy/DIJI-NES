@@ -654,6 +654,7 @@ static void drawROMDisplayName(const String& romPath, int x, int y, uint16_t col
 
 // ================ 主菜单绘制 ================
 void drawMainMenu() {
+    tft.setFont(MENU_ROM_FONT);
     tft.fillScreen(MENU_BG_COLOR);
     
     // ===== 头部标题 =====
@@ -663,7 +664,7 @@ void drawMainMenu() {
     // 绘制 DiJi-NES 标题
     tft.setTextColor(MENU_TITLE_COLOR);
     tft.setTextSize(2);
-    tft.setCursor(105, 10);
+    tft.setCursor(105, 3);
     tft.print("DIJI-NES");
     
     // 装饰线
@@ -683,21 +684,21 @@ void drawMainMenu() {
         tft.setTextSize(1);
         if (!sdCardAvailable) {
             // SD 卡未插入
-            tft.setCursor(60, listStartY + 40);
-            tft.print("No SD card detected");
+            tft.setCursor(40, listStartY + 40);
+            tft.print("没有检测到储存卡");
             tft.setCursor(40, listStartY + 60);
-            tft.print("Please insert SD card with");
-            tft.setCursor(40, listStartY + 75);
-            tft.print(".nes ROM files");
-            tft.setCursor(50, listStartY + 100);
+            tft.print("请插入存放了 .nes ");
+            tft.setCursor(40, listStartY + 80);
+            tft.print("游戏ROM 的存储卡");
+            tft.setCursor(80, listStartY + 105);
             tft.setTextColor(MENU_ARROW_COLOR);
-            tft.print("Press A to retry");
+            tft.print("按A重试");
         } else {
             // SD 卡已插入但没有 ROM
             tft.setCursor(80, listStartY + 60);
-            tft.print("No ROM files found on SD card");
+            tft.print("卡内没有 *.nes 游戏ROM 文件");
             tft.setCursor(90, listStartY + 80);
-            tft.print("Please add .nes files");
+            tft.print("复制进卡内后重试");
         }
     } else {
         // 计算分页信息
@@ -736,7 +737,7 @@ void drawMainMenu() {
         
         // 分页信息
         tft.setTextColor(MENU_HINT_COLOR);
-        tft.setCursor(270, listStartY + ITEMS_PER_PAGE * itemHeight + 6);
+        tft.setCursor(270, listStartY + ITEMS_PER_PAGE * itemHeight + 10);
         char pageInfo[16];
         snprintf(pageInfo, sizeof(pageInfo), "%d/%d", currentPage, totalPages);
         tft.print(pageInfo);
@@ -749,8 +750,8 @@ void drawMainMenu() {
     
     tft.setTextColor(MENU_HINT_COLOR);
     tft.setTextSize(1);
-    tft.setCursor(60, hintY + 10);
-    tft.print("UP/DOWN: Select    START: Play Game");
+    tft.setCursor(20, hintY + 10);
+    tft.print("上/下 键: 选择    开始键: 确定");
 }
 
 // ================ 暂停菜单绘制 ================
@@ -763,7 +764,7 @@ void drawPauseMenu() {
     
     // 暂停菜单框
     int menuWidth = 160;
-    int menuHeight = 195;  // 增加高度以容纳更多选项
+    int menuHeight = 190;  // 增加高度以容纳更多选项
     int menuX = (320 - menuWidth) / 2;
     int menuY = (240 - menuHeight) / 2;
     
@@ -773,14 +774,14 @@ void drawPauseMenu() {
     tft.drawRect(menuX + 1, menuY + 1, menuWidth - 2, menuHeight - 2, MENU_BORDER_COLOR);
 
     // ===== 设置中文字体 =====
-    //tft.setFont(MENU_ROM_FONT);  // ← 关键：使用中文字体
-    //tft.setTextSize(1);
+    tft.setFont(MENU_ROM_FONT);
+    tft.setTextSize(1);
     
     // 标题
     tft.setTextColor(MENU_TITLE_COLOR);
-    tft.setTextSize(2);
+    //tft.setTextSize(2);
     tft.setCursor(menuX + 40, menuY + 10);
-    tft.print("PAUSED");
+    tft.print("暂停");
     
     // 分隔线
     tft.drawFastHLine(menuX + 10, menuY + 32, menuWidth - 20, MENU_BORDER_COLOR);
@@ -788,17 +789,17 @@ void drawPauseMenu() {
     // 菜单选项
     // 动态构建选项文本
     char turboAText[20], turboBText[20];
-    snprintf(turboAText, sizeof(turboAText), "A Turbo: %s", turboAEnabled ? "ON " : "OFF");
-    snprintf(turboBText, sizeof(turboBText), "B Turbo: %s", turboBEnabled ? "ON " : "OFF");
+    snprintf(turboAText, sizeof(turboAText), "A键 连发: %s", turboAEnabled ? "开" : "关");
+    snprintf(turboBText, sizeof(turboBText), "B键 连发: %s", turboBEnabled ? "开" : "关");
  
-    const char* options[] = {"Continue", "Volume", turboAText, turboBText,"Save State", "Load State", "Exit to Menu"};
+    const char* options[] = {"继续", "音量", turboAText, turboBText,"保存进度", "读取进度", "返回主菜单"};
     tft.setTextSize(1);
     
     for (int i = 0; i < PAUSE_OPTION_COUNT; i++) {
         int optY = menuY + 40 + i * 20;
         
         if (i == pauseMenuIndex) {
-            tft.fillRect(menuX + 10, optY - 2, menuWidth - 20, 18, MENU_HIGHLIGHT_BG);
+            tft.fillRect(menuX + 10, optY - 2, menuWidth - 20, 22, MENU_HIGHLIGHT_BG);
             tft.setTextColor(MENU_ARROW_COLOR);
             tft.setCursor(menuX + 20, optY + 3);
             tft.print("> ");
@@ -811,14 +812,14 @@ void drawPauseMenu() {
         
         tft.print(options[i]);
         if (i == PAUSE_VOLUME_INDEX) {
-            drawVolumeBlocks(menuX + 82, optY + 3, nes.apu.getVolumeLevel(), i == pauseMenuIndex);
+            drawVolumeBlocks(menuX + 82, optY + 6, nes.apu.getVolumeLevel(), i == pauseMenuIndex);
         }
     }
     
     // 操作提示
     tft.setTextColor(MENU_HINT_COLOR);
-    tft.setCursor(menuX + 15, menuY + menuHeight - 12);
-    tft.print("UP/DOWN: Select  L/R: Vol");
+    tft.setCursor(menuX + 15, menuY + menuHeight + 1 );
+    tft.print("A: 选择  B: 返回");
 }
 
 void drawVolumeBlocks(int x, int y, uint8_t level, bool selected) {
@@ -1021,7 +1022,7 @@ void handlePauseInput() {
             tft.setTextColor(MENU_TITLE_COLOR);
             tft.setTextSize(2);
             tft.setCursor(80, 110);
-            tft.print("Saving...");
+            tft.print("保存中...");
             
             char savePath[128];
             getSaveStatePath(savePath, sizeof(savePath));
@@ -1030,14 +1031,14 @@ void handlePauseInput() {
                 tft.setTextColor(0x07E0);  // 绿色成功提示
                 tft.setTextSize(2);
                 tft.setCursor(60, 110);
-                tft.print("State Saved!");
+                tft.print("已保存!");
                 delay(1000);
             } else {
                 tft.fillScreen(TFT_BLACK);
                 tft.setTextColor(0xF800);  // 红色错误提示
                 tft.setTextSize(2);
                 tft.setCursor(60, 110);
-                tft.print("Save Failed!");
+                tft.print("保存失败!");
                 delay(1500);
             }
             
@@ -1052,7 +1053,7 @@ void handlePauseInput() {
             tft.setTextColor(MENU_TITLE_COLOR);
             tft.setTextSize(2);
             tft.setCursor(80, 110);
-            tft.print("Loading...");
+            tft.print("读取中...");
             
             char savePath[128];
             getSaveStatePath(savePath, sizeof(savePath));
@@ -1061,18 +1062,18 @@ void handlePauseInput() {
                 tft.setTextColor(0x07E0);  // 绿色成功提示
                 tft.setTextSize(2);
                 tft.setCursor(60, 110);
-                tft.print("State Loaded!");
+                tft.print("读取完成!");
                 delay(1000);
             } else {
                 tft.fillScreen(TFT_BLACK);
                 tft.setTextColor(0xF800);  // 红色错误提示
                 tft.setTextSize(2);
                 tft.setCursor(60, 110);
-                tft.print("Load Failed!");
+                tft.print("读取失败!");
                 tft.setTextColor(MENU_HINT_COLOR);
                 tft.setTextSize(1);
                 tft.setCursor(50, 140);
-                tft.print("No save state found");
+                tft.print("找不到存盘文件!");
                 delay(1500);
             }
             
@@ -1117,14 +1118,14 @@ bool loadSelectedROM() {
     }
     
     const char* romPath = romList[selectedIndex].c_str();
-    Serial.printf("Loading ROM: %s\n", romPath);
+    Serial.printf("载入 ROM: %s\n", romPath);
     
     // 显示加载中
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(MENU_TITLE_COLOR);
     tft.setTextSize(2);
     tft.setCursor(100, 110);
-    tft.print("Loading...");
+    tft.print("载入中...");
     
     if (!nes.loadROM(romPath)) {
         Serial.printf("Failed to load ROM: %s\n", romPath);
