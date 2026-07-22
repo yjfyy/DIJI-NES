@@ -15,6 +15,10 @@
 #include "esp_err.h"
 #include "esp_timer.h"
 
+// 引入fat分区
+#include "esp_vfs_fat.h"
+#include "wear_levelling.h"
+
 // ================ 连发设置 ================
 #define TURBO_INTERVAL_MS 50  // 连发间隔（毫秒），60ms ≈ 16次/秒
                                // 可调整为 40（更快，25次/秒）或 80（更慢，12次/秒）
@@ -527,7 +531,7 @@ bool tryInitSD() {
     sdSPI.begin(SD_SCLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
 
     if (!SD.begin(SD_CS_PIN, sdSPI, SD_FREQ)) {
-        Serial.println("SD card init failed or not inserted");
+        //Serial.println("SD card init failed or not inserted");
         sdCardAvailable = false;
         return false;
     }
@@ -545,44 +549,43 @@ void initializeSD() {
 void scanROMFiles() {
     romList.clear();
     
-    File root = SD.open("/");
-    if (!root) {
-        Serial.println("Failed to open root directory");
-        return;
-    }
+    const char* paths[] = {"/", "/roms2"};
     
-    while (true) {
-        File entry = root.openNextFile();
-        if (!entry) break;
-        
-        if (!entry.isDirectory()) {
-            String filename = entry.name();
-            
-            // 跳过 macOS 元数据文件 (以 ._ 开头)
-            String basename = filename;
-            int lastSlash = filename.lastIndexOf('/');
-            if (lastSlash >= 0) {
-                basename = filename.substring(lastSlash + 1);
-            }
-            if (basename.startsWith("._")) {
-                entry.close();
-                continue;
-            }
-            
-            // 检查是否为 .nes 文件
-            if (filename.endsWith(".nes") || filename.endsWith(".NES") || 
-                filename.endsWith(".Nes")) {
-                // 确保路径以 / 开头
-                if (!filename.startsWith("/")) {
-                    filename = "/" + filename;
-                }
-                romList.push_back(filename);
-                Serial.printf("Found ROM: %s\n", filename.c_str());
-            }
+    for (int p = 0; p < 2; p++) {
+        File root = SD.open(paths[p]);
+        if (!root) {
+            Serial.printf("Failed to open %s\n", paths[p]);
+            continue;
         }
-        entry.close();
+        
+        while (true) {
+            File entry = root.openNextFile();
+            if (!entry) break;
+            
+            if (!entry.isDirectory()) {
+                String filename = entry.name();
+                
+                // 检查是否为 .nes 文件
+                if (filename.endsWith(".nes") || filename.endsWith(".NES") || 
+                    filename.endsWith(".Nes")) {
+                    // 完整路径前缀
+                    String fullPath = String(paths[p]);
+                    if (!fullPath.endsWith("/") && !filename.startsWith("/")) {
+                        fullPath += "/";
+                    }
+                    if (filename.startsWith("/")) {
+                        fullPath = filename;
+                    } else {
+                        fullPath += filename;
+                    }
+                    romList.push_back(fullPath);
+                    Serial.printf("Found ROM: %s\n", fullPath.c_str());
+                }
+            }
+            entry.close();
+        }
+        root.close();
     }
-    root.close();
     
     Serial.printf("Total ROMs found: %d\n", romList.size());
     
@@ -682,24 +685,24 @@ void drawMainMenu() {
     if (romList.empty()) {
         tft.setTextColor(MENU_HINT_COLOR);
         tft.setTextSize(1);
-        if (!sdCardAvailable) {
-            // SD 卡未插入
-            tft.setCursor(40, listStartY + 40);
-            tft.print("没有检测到储存卡");
-            tft.setCursor(40, listStartY + 60);
-            tft.print("请插入存放了 .nes ");
-            tft.setCursor(40, listStartY + 80);
-            tft.print("游戏ROM 的存储卡");
-            tft.setCursor(80, listStartY + 105);
-            tft.setTextColor(MENU_ARROW_COLOR);
-            tft.print("按A重试");
-        } else {
-            // SD 卡已插入但没有 ROM
-            tft.setCursor(80, listStartY + 60);
-            tft.print("卡内没有 *.nes 游戏ROM 文件");
-            tft.setCursor(90, listStartY + 80);
-            tft.print("复制进卡内后重试");
-        }
+        // if (!sdCardAvailable) {
+        //     // SD 卡未插入
+        //     tft.setCursor(40, listStartY + 40);
+        //     tft.print("没有检测到储存卡");
+        //     tft.setCursor(40, listStartY + 60);
+        //     tft.print("请插入存放了 .nes ");
+        //     tft.setCursor(40, listStartY + 80);
+        //     tft.print("游戏ROM 的存储卡");
+        //     tft.setCursor(80, listStartY + 105);
+        //     tft.setTextColor(MENU_ARROW_COLOR);
+        //     tft.print("按A重试");
+        // } else {
+        //     // SD 卡已插入但没有 ROM
+        //     tft.setCursor(80, listStartY + 60);
+        //     tft.print("卡内没有 *.nes 游戏ROM 文件");
+        //     tft.setCursor(90, listStartY + 80);
+        //     tft.print("复制进卡内后重试");
+        // }
     } else {
         // 计算分页信息
         int totalPages = (romList.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
@@ -1257,12 +1260,48 @@ static void muteAudio() {
     i2s_zero_dma_buffer((i2s_port_t)I2S_NUM);
 }
 
+
+// 内部 Flash 分区挂载函数
+bool mountInternalStorage() {
+    // 将挂载点改为 /sd/roms2，这样 SD 库就能直接访问
+    const char* mount_point = "/sd/roms2";  // 改为 SD 卡的子目录
+    wl_handle_t wl_handle = WL_INVALID_HANDLE;
+    
+    esp_vfs_fat_mount_config_t mount_config = {
+        .format_if_mount_failed = true,
+        .max_files = 5,
+        .allocation_unit_size = 4096
+    };
+    
+    esp_err_t err = esp_vfs_fat_spiflash_mount(
+        mount_point,
+        "storage",
+        &mount_config,
+        &wl_handle
+    );
+    
+    if (err != ESP_OK) {
+        Serial.printf("Failed to mount internal storage: %d\n", err);
+        return false;
+    }
+    
+    Serial.printf("Internal storage mounted at %s\n", mount_point);
+    
+    // 此时 SD.open("/roms2") 就可以访问内部分区了
+    return true;
+}
+
 // ================ 主程序 ================
 void setup() {
     initializeSerial();
     initializeScreen();
     initializeButtons();
     initializeSD();
+    
+    // ===== 新增：挂载内部 Flash FAT 分区到 /roms2 =====
+    mountInternalStorage();  // 需要在文件顶部声明这个函数
+    // =================================================
+    
     loadROM();  // 扫描 ROM 文件列表
     
     // 初始化音频 (I2S) 并在另一个 CPU core 上运行音频任务
