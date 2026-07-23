@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <SD.h>
+//#include <SD.h>
 #include <SPI.h>
 #include <vector>
 #include <algorithm>
@@ -145,7 +145,7 @@ static void muteAudio();
 static bool gameJustEntered = false;
 // 游戏暂停状态 - APU 任务使用
 static volatile bool gameRunning = false;
-static bool sdCardAvailable = false;  // SD 卡是否可用
+//static bool sdCardAvailable = false;  // SD 卡是否可用
 
 // 帧同步
 const uint32_t FRAME_TIME_US = 16667;  // ~60 FPS (1000000 / 60)
@@ -535,83 +535,68 @@ bool tryInitSD() {
 
     if (!SD.begin(SD_CS_PIN, sdSPI, SD_FREQ)) {
         //Serial.println("SD card init failed or not inserted");
-        sdCardAvailable = false;
+        //sdCardAvailable = false;
         return false;
     }
     
     Serial.println("SD card initialized");
-    sdCardAvailable = true;
+    //sdCardAvailable = true;
     return true;
 }
 
-void initializeSD() {
-    tryInitSD();
-}
+// void initializeSD() {
+//     tryInitSD();
+// }
 
 // ================ ROM 文件扫描 ================
 void scanROMFiles() {
     romList.clear();
     
-    // 1. 使用 POSIX API 扫描内部分区（不依赖 SD 库）
-    Serial.println("Scanning internal storage /roms2 with POSIX...");
-    DIR* dir = opendir("/sd/roms2");
+    // 扫描内部分区 /roms2
+    Serial.println("Scanning /roms2...");
+    DIR* dir = opendir("/roms2");
     if (dir) {
         struct dirent* entry;
         while ((entry = readdir(dir)) != NULL) {
             String filename = entry->d_name;
-            // 跳过 . 和 ..
             if (filename == "." || filename == "..") continue;
-            
-            if (filename.endsWith(".nes") || filename.endsWith(".NES") || 
-                filename.endsWith(".Nes")) {
-                String fullPath;
-                 if (sdCardAvailable) {
-                    // 有 SD 卡：SD.open() 会自动添加 /sd 前缀
-                    fullPath = "/roms2/" + filename;
-                } else {
-                    // 无 SD 卡：直接使用完整路径
-                    fullPath = "/sd/roms2/" + filename;
-                }
+            if (filename.endsWith(".nes") || filename.endsWith(".NES")) {
+                String fullPath = "/roms2/" + filename;
                 romList.push_back(fullPath);
-                Serial.printf("Found ROM (internal): %s\n", fullPath.c_str());
+                Serial.printf("  Found: %s\n", fullPath.c_str());
             }
         }
         closedir(dir);
     } else {
-        Serial.println("Failed to open /roms2 with POSIX");
+        Serial.println("  /roms2 not available");
     }
     
-    // 2. 如果 SD 卡可用，使用 SD 库扫描 SD 卡
-    if (sdCardAvailable) {
-        Serial.println("Scanning SD card...");
-        File root = SD.open("/");
-        if (root) {
-            while (true) {
-                File entry = root.openNextFile();
-                if (!entry) break;
-                if (!entry.isDirectory()) {
-                    String filename = entry.name();
-                    if (filename.endsWith(".nes") || filename.endsWith(".NES") || 
-                        filename.endsWith(".Nes")) {
-                        String fullPath = "/" + filename;
-                        // 避免重复
-                        bool exists = false;
-                        for (auto& r : romList) {
-                            if (r == fullPath) { exists = true; break; }
-                        }
-                        if (!exists) {
-                            romList.push_back(fullPath);
-                            Serial.printf("Found ROM (SD): %s\n", fullPath.c_str());
-                        }
-                    }
+    // 扫描 SD 卡 /sd
+    Serial.println("Scanning /sd...");
+    dir = opendir("/sd");
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != NULL) {
+            String filename = entry->d_name;
+            if (filename == "." || filename == "..") continue;
+            if (filename.endsWith(".nes") || filename.endsWith(".NES")) {
+                String fullPath = "/sd/" + filename;
+                // 避免重复
+                bool exists = false;
+                for (auto& r : romList) {
+                    if (r == fullPath) { exists = true; break; }
                 }
-                entry.close();
+                if (!exists) {
+                    romList.push_back(fullPath);
+                    Serial.printf("  Found: %s\n", fullPath.c_str());
+                }
             }
-            root.close();
         }
+        closedir(dir);
+    } else {
+        Serial.println("  /sd not available");
     }
     
-    // 排序
     std::sort(romList.begin(), romList.end());
     Serial.printf("Total ROMs found: %d\n", romList.size());
 }
@@ -1208,12 +1193,12 @@ void returnToMainMenu() {
     drawMainMenu();
 }
 
-void loadROM() {
-    // 现在使用菜单选择，这里只是扫描ROM列表
-    //if (sdCardAvailable) {
-        scanROMFiles();
-    //}
-}
+// void loadROM() {
+//     // 现在使用菜单选择，这里只是扫描ROM列表
+//     //if (sdCardAvailable) {
+//         scanROMFiles();
+//     //}
+// }
 
 // ---------------- Audio (I2S) ----------------
 static void initializeAudio() {
@@ -1284,7 +1269,7 @@ static void muteAudio() {
 bool mountInternalStorage() {
     Serial.println("Mounting internal storage to /roms2...");
     
-    const char* mount_point = "/sd/roms2";
+    const char* mount_point = "/roms2";
     wl_handle_t wl_handle = WL_INVALID_HANDLE;
     
     esp_vfs_fat_mount_config_t mount_config = {
@@ -1293,7 +1278,6 @@ bool mountInternalStorage() {
         .allocation_unit_size = 4096
     };
     
-    // 使用编译器建议的函数：不带 _rw_wl 后缀
     esp_err_t err = esp_vfs_fat_spiflash_mount(
         mount_point,
         "storage",
@@ -1303,39 +1287,29 @@ bool mountInternalStorage() {
     
     if (err != ESP_OK) {
         Serial.printf("Failed to mount internal storage: %d\n", err);
-        if (err == ESP_ERR_NOT_FOUND) {
-            Serial.println("  分区 'storage' 未找到，请检查分区表");
-        } else if (err == ESP_ERR_INVALID_ARG) {
-            Serial.println("  参数无效");
-        }
         return false;
     }
     
     Serial.println("✓ Internal storage mounted at /roms2");
     return true;
 }
-
 // ================ 主程序 ================
 void setup() {
     initializeSerial();
     initializeScreen();
     initializeButtons();
-        // 1. 先挂载内部分区（不依赖 SD 卡）
+
+    // 1. 挂载内部分区（独立于 SD 卡）
     Serial.println("=== Mounting internal storage ===");
-    bool internalMounted = mountInternalStorage();
-    if (internalMounted) {
-        Serial.println("✓ Internal storage ready");
-    } else {
-        Serial.println("✗ Internal storage mount failed");
-    }
+    mountInternalStorage();
     
     // 2. 尝试初始化 SD 卡（失败也没关系）
     Serial.println("=== Initializing SD card ===");
-    tryInitSD();  // 这个函数现在应该静默失败
+    tryInitSD();  // 这个函数现在只是尝试，不影响后续
     
-    // 3. 扫描 ROM（独立于 SD 卡状态）
+    // 3. 扫描所有 ROM
     Serial.println("=== Scanning ROM files ===");
-    scanROMFiles();  // 现在这个函数独立于 sdCardAvailable
+    scanROMFiles();
     
     // 显示扫描结果
     Serial.printf("Found %d ROMs\n", romList.size());

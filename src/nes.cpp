@@ -1,5 +1,5 @@
 #include "nes.h"
-#include <SD.h>
+//#include <SD.h>
 
 bool NES::loadROM(const char* path) {
     cpu.connect(this);
@@ -636,16 +636,16 @@ bool NES::saveState(const char* path) {
         return false;
     }
     
-    // 写入文件
-    File f = SD.open(path, FILE_WRITE);
+    // 使用 POSIX fopen 写入文件（不依赖 SD 卡）
+    FILE* f = fopen(path, "wb");
     if (!f) {
         Serial.printf("SaveState: Failed to create file %s\n", path);
         free(buffer);
         return false;
     }
     
-    size_t written = f.write(buffer, stateSize);
-    f.close();
+    size_t written = fwrite(buffer, 1, stateSize, f);
+    fclose(f);
     free(buffer);
     
     if (written != stateSize) {
@@ -658,41 +658,46 @@ bool NES::saveState(const char* path) {
 }
 
 bool NES::loadState(const char* path) {
-    File f = SD.open(path, FILE_READ);
+    // 使用 POSIX fopen 读取文件
+    FILE* f = fopen(path, "rb");
     if (!f) {
-        Serial.printf("LoadState: File not found %s\n", path);
+        Serial.printf("LoadState: Failed to open %s\n", path);
         return false;
     }
     
-    size_t fileSize = f.size();
+    // 获取文件大小
+    fseek(f, 0, SEEK_END);
+    size_t stateSize = ftell(f);
+    fseek(f, 0, SEEK_SET);
     
     // 分配缓冲区
-    uint8_t* buffer = (uint8_t*)ps_malloc(fileSize);
+    uint8_t* buffer = (uint8_t*)ps_malloc(stateSize);
     if (!buffer) {
-        buffer = (uint8_t*)malloc(fileSize);
+        buffer = (uint8_t*)malloc(stateSize);
     }
     if (!buffer) {
         Serial.println("LoadState: Failed to allocate buffer");
-        f.close();
+        fclose(f);
         return false;
     }
     
-    // 读取文件
-    size_t bytesRead = f.read(buffer, fileSize);
-    f.close();
+    size_t readSize = fread(buffer, 1, stateSize, f);
+    fclose(f);
     
-    if (bytesRead != fileSize) {
-        Serial.printf("LoadState: Read error (%d != %d)\n", bytesRead, fileSize);
+    if (readSize != stateSize) {
+        Serial.printf("LoadState: Read error (%d != %d)\n", readSize, stateSize);
         free(buffer);
         return false;
     }
     
-    // 加载状态
-    bool success = loadStateFromMemory(buffer, fileSize);
+    // 从内存恢复
+    bool success = loadStateFromMemory(buffer, stateSize);
     free(buffer);
     
     if (success) {
         Serial.printf("LoadState: Loaded from %s\n", path);
+    } else {
+        Serial.println("LoadState: Failed to restore state");
     }
     
     return success;
