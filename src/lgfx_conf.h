@@ -79,10 +79,10 @@ public:
       cfg.use_lock   = false;        //如果使用交易锁则设置为true
       cfg.dma_channel = SPI_DMA_CH_AUTO; // 设置要使用的DMA通道（0=不使用DMA/1=1ch/2=ch/SPI_DMA_CH_AUTO=auto设置）。
       // *随着ESP-IDF版本的升级，现在推荐使用SPI_DMA_CH_AUTO（自动设置）作为DMA通道，1ch和2ch被弃用。
-      cfg.pin_sclk = 14;            // 设置SPI SCLK引脚编号
-      cfg.pin_mosi = 13;            // 设置SPI的MOSI引脚编号
+      cfg.pin_sclk = 15;            // 设置SPI SCLK引脚编号
+      cfg.pin_mosi = 7;            // 设置SPI的MOSI引脚编号
       cfg.pin_miso = -1;            // 设置SPI的MISO针脚编号（-1 = 禁用）。
-      cfg.pin_dc   = 11;            // 设置SPI的D/C针脚编号（-1 = 禁用）。
+      cfg.pin_dc   = 6;            // 设置SPI的D/C针脚编号（-1 = 禁用）。
      // 当与SD卡共同使用SPI总线时，必须无遗漏地设置MISO。
 
       _bus_instance.config(cfg);    // //反映总线上的配置值。
@@ -92,8 +92,8 @@ public:
     { // 配置显示面板控制设置。
       auto cfg = _panel_instance.config();    // 获取屏幕配置的结构。。
 
-      cfg.pin_cs           =    10;  // 连接CS的引脚编号（-1 = 禁用）。
-      cfg.pin_rst          =    12;  // 连接RST的引脚编号 (-1 = 禁用)
+      cfg.pin_cs           =    4;  // 连接CS的引脚编号（-1 = 禁用）。
+      cfg.pin_rst          =    5;  // 连接RST的引脚编号 (-1 = 禁用)
       cfg.pin_busy         =    -1;  // 连接BUSY的引脚编号 (-1 = 禁用)
 
         // * 下面的设置对每个面板都有一般的默认值，如果你对某个项目不确定，可以把它注释出来并试一试。
@@ -105,9 +105,9 @@ public:
       cfg.offset_rotation  =     2;  // 旋转方向的偏移量为0~7（4~7为倒置）。
       cfg.dummy_read_pixel =     8;  // 读取像素前的假读位数量
       cfg.dummy_read_bits  =     1;  // 读取非像素数据前的虚拟读取位数
-      cfg.readable         =  true;  // 如果可以读取数据，则设置为true。
-      cfg.invert           = false;   // 设定 是否反色，有些屏幕需要设置这个值才能获取正确的颜色
-      cfg.rgb_order        = false;  // true 为 RGB false 为 BGR
+      cfg.readable         =  false;  // 如果可以读取数据，则设置为true。
+      cfg.invert           = true;   // 设定 是否反色，有些屏幕需要设置这个值才能获取正确的颜色
+      cfg.rgb_order        = true;  // true 为 RGB false 为 BGR
       cfg.dlen_16bit       = false;  // 如果面板在16位并行或SPI中以16位单位传输数据长度，则设置为true。
       cfg.bus_shared       = false;  // SDカー如果与SD卡共享总线，则设置为true（总线控制由drawJpgFile等执行）。
 
