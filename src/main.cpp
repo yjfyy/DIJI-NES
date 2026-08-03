@@ -78,6 +78,14 @@ static const unsigned long BUTTON_DEBOUNCE = 200;  // 200ms防抖
 #define DOWN_BUTTON   17
 #define START_BUTTON  18
 #define SELECT_BUTTON 3
+#define TURBO_A_BUTTON  21   // 连发A键
+#define TURBO_B_BUTTON  38   // 连发B键
+
+// 连发频率控制（值越小连发越快）
+#define TURBO_FREQ_DIVIDER  2   // 每4帧切换一次，约15Hz
+// 或使用其他值：
+// #define TURBO_FREQ_DIVIDER  2   // 每2帧切换，约30Hz（更快）
+// #define TURBO_FREQ_DIVIDER  6   // 每6帧切换，约10Hz（更慢）
 
 // I2S / APU -> MAX98357A (I2S DAC)
 #define I2S_BCLK_PIN 5
@@ -155,6 +163,13 @@ struct ButtonState {
     uint8_t START = 0;
     uint8_t SELECT = 0;
 } buttons;
+
+// 添加连发键状态
+struct TurboState {
+    bool turboA = false;
+    bool turboB = false;
+    uint8_t turboCounter = 0;
+} turboState;
 
 // ================ 函数前向声明 ================
 void updateButtons();
@@ -414,6 +429,10 @@ void initializeButtons() {
     pinMode(DOWN_BUTTON, INPUT_PULLUP);
     pinMode(START_BUTTON, INPUT_PULLUP);
     pinMode(SELECT_BUTTON, INPUT_PULLUP);
+
+    // 添加连发键引脚
+    pinMode(TURBO_A_BUTTON, INPUT_PULLUP);
+    pinMode(TURBO_B_BUTTON, INPUT_PULLUP);
 }
 
 void updateButtons() {
@@ -426,6 +445,41 @@ void updateButtons() {
     buttons.DOWN   = !digitalRead(DOWN_BUTTON);
     buttons.START  = !digitalRead(START_BUTTON);
     buttons.SELECT = !digitalRead(SELECT_BUTTON);
+
+        // 读取连发键状态
+    bool turboAPressed = !digitalRead(TURBO_A_BUTTON);
+    bool turboBPressed = !digitalRead(TURBO_B_BUTTON);
+
+        // 更新连发计数器
+    static uint8_t frameCounter = 0;
+    frameCounter++;
+        // 每帧切换一次连发状态（约30Hz连发频率）
+    // 每2帧切换一次状态，实现15Hz的连发频率
+    if (frameCounter % 2 == 0) {
+        turboState.turboCounter++;
+    }
+    // 使用宏定义控制频率
+    if (turboAPressed) {
+        turboState.turboA = (turboState.turboCounter % TURBO_FREQ_DIVIDER < TURBO_FREQ_DIVIDER / 2);
+        if (buttons.A) {
+            turboState.turboA = true;
+        }
+    } else {
+        turboState.turboA = false;
+    }
+    
+    // 连发B：类似逻辑
+    if (turboBPressed) {
+        turboState.turboB = (turboState.turboCounter % TURBO_FREQ_DIVIDER < TURBO_FREQ_DIVIDER / 2);
+        if (buttons.B) {
+            turboState.turboB = true;
+        }
+    } else {
+        turboState.turboB = false;
+    }
+    
+    // 将连发键状态合并到 buttons 中（用于控制器输入）
+    // 注意：这里不修改 buttons.A 和 buttons.B，而是单独处理
 }
 
 // ================ 清除屏幕边缘，进入游戏前调用 ================
@@ -1251,8 +1305,8 @@ void loop() {
     }
     
     uint8_t controllerState = 0;
-    if (buttons.A)      controllerState |= 0x01;
-    if (buttons.B)      controllerState |= 0x02;
+    if (buttons.A || turboState.turboA)  controllerState |= 0x01;
+    if (buttons.B || turboState.turboB)  controllerState |= 0x02;
     if (buttons.SELECT) controllerState |= 0x04;
     if (buttons.START)  controllerState |= 0x08;
     if (buttons.UP)     controllerState |= 0x10;
