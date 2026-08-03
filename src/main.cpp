@@ -63,26 +63,26 @@ static const unsigned long BUTTON_DEBOUNCE = 200;  // 200ms防抖
 
 // ================ PIN定义 ================
 // SD卡引脚
-#define SD_CS_PIN     42
-#define SD_SCLK_PIN   40
-#define SD_MISO_PIN   39
-#define SD_MOSI_PIN   41
+#define SD_CS_PIN     39
+#define SD_SCLK_PIN   41
+#define SD_MISO_PIN   42
+#define SD_MOSI_PIN   40
 #define SD_FREQ       10000000  // 10 MHz
 
 // 游戏控制器按键
 #define A_BUTTON      48
 #define B_BUTTON      47
 #define LEFT_BUTTON   8
-#define RIGHT_BUTTON  18
-#define UP_BUTTON     17
-#define DOWN_BUTTON   3
-#define START_BUTTON  15
-#define SELECT_BUTTON 16
+#define RIGHT_BUTTON  15
+#define UP_BUTTON     16
+#define DOWN_BUTTON   17
+#define START_BUTTON  18
+#define SELECT_BUTTON 3
 
 // I2S / APU -> MAX98357A (I2S DAC)
 #define I2S_BCLK_PIN 5
-#define I2S_LRCLK_PIN 4
-#define I2S_DATA_PIN 6
+#define I2S_LRCLK_PIN 6
+#define I2S_DATA_PIN 4
 
 // 音频参数
 constexpr int AUDIO_SAMPLE_RATE = 44100;
