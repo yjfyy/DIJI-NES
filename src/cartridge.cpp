@@ -25,7 +25,8 @@ Cartridge::~Cartridge() {
 }
 
 bool Cartridge::load(const char* path) {
-    File f = SD.open(path);
+    // 改用 fopen（不依赖 SD 卡）
+    FILE* f = fopen(path, "rb");
     if (!f) {
         Serial.printf("Cartridge: Failed to open %s\n", path);
         return false;
@@ -33,16 +34,16 @@ bool Cartridge::load(const char* path) {
 
     // 读取 iNES 头 (16 字节)
     uint8_t header[16];
-    if (f.read(header, 16) != 16) {
+    if (fread(header, 1, 16, f) != 16) {
         Serial.println("Cartridge: Failed to read header");
-        f.close();
+        fclose(f);
         return false;
     }
 
     // 验证 iNES 魔数 "NES\x1A"
     if (header[0] != 'N' || header[1] != 'E' || header[2] != 'S' || header[3] != 0x1A) {
         Serial.println("Cartridge: Invalid iNES header");
-        f.close();
+        fclose(f);
         return false;
     }
 
@@ -81,7 +82,7 @@ bool Cartridge::load(const char* path) {
     // 检查 Mapper 支持
     if (mapper != 0 && mapper != 1 && mapper != 2 && mapper != 3 && mapper != 4) {
         Serial.printf("  ERROR: Mapper %d not supported!\n", mapper);
-        f.close();
+        fclose(f);
         return false;
     } else {
         const char* mapperNames[] = {"NROM", "MMC1", "UxROM", "CNROM", "MMC3"};
@@ -91,7 +92,10 @@ bool Cartridge::load(const char* path) {
     // 跳过 Trainer (如果存在)
     if (hasTrainer) {
         Serial.println("  Trainer: Yes (skipping 512 bytes)");
-        f.seek(16 + 512);
+        fseek(f, 16 + 512, SEEK_SET);
+    } else {
+        // 如果没有 Trainer，从 header 之后开始
+        fseek(f, 16, SEEK_SET);
     }
 
     // 计算实际大小
@@ -99,7 +103,7 @@ bool Cartridge::load(const char* path) {
     chrSize = chrBanks * 0x2000;  // 每个 bank 8KB
     if (prgSize == 0) {
         Serial.println("  ERROR: Invalid ROM, PRG size is zero");
-        f.close();
+        fclose(f);
         return false;
     }
 
@@ -111,18 +115,18 @@ bool Cartridge::load(const char* path) {
     if (!prg) prg = (uint8_t*)ps_malloc(prgSize);
     if (!prg) {
         Serial.println("  ERROR: Failed to allocate PRG memory!");
-        f.close();
+        fclose(f);
         return false;
     }
     Serial.printf("  PRG buffer allocated: %d bytes\n", prgSize);
 
     // 读取 PRG ROM
     memset(prg, 0xFF, prgSize);
-    size_t prgRead = f.read(prg, prgSize);
+    size_t prgRead = fread(prg, 1, prgSize, f);
     Serial.printf("  PRG loaded: %d bytes\n", prgRead);
     if (prgRead != prgSize) {
         Serial.println("  ERROR: Incomplete PRG ROM data");
-        f.close();
+        fclose(f);
         return false;
     }
     
@@ -162,11 +166,11 @@ bool Cartridge::load(const char* path) {
             chr = (uint8_t*)malloc(chrSize);
         }
         if (chr) {
-            size_t chrRead = f.read(chr, chrSize);
+            size_t chrRead = fread(chr, 1, chrSize, f);
             Serial.printf("  CHR loaded: %d bytes\n", chrRead);
             if (chrRead != chrSize) {
                 Serial.println("  ERROR: Incomplete CHR ROM data");
-                f.close();
+                fclose(f);
                 return false;
             }
             chrWindow = chr;  // 使用 CHR ROM
@@ -204,7 +208,7 @@ bool Cartridge::load(const char* path) {
     updateBankCache();
     updateNtPtrs();
 
-    f.close();
+    fclose(f);
     Serial.println("======================\n");
     return true;
 }

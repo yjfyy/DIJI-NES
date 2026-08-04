@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <SD.h>
+//#include <SD.h>
 #include <SPI.h>
 #include <vector>
 #include <algorithm>
@@ -14,6 +14,12 @@
 #include "driver/i2s.h"
 #include "esp_err.h"
 #include "esp_timer.h"
+
+// 引入fat分区
+#include "esp_vfs_fat.h"
+#include "wear_levelling.h"    // 这个很关键，提供了 wl_handle_t 类型
+#include <dirent.h>
+#include <sys/stat.h>
 
 // 串口调试开关
 #ifndef ENABLE_DEBUG_SERIAL
@@ -139,7 +145,7 @@ static void muteAudio();
 static bool gameJustEntered = false;
 // 游戏暂停状态 - APU 任务使用
 static volatile bool gameRunning = false;
-static bool sdCardAvailable = false;  // SD 卡是否可用
+//static bool sdCardAvailable = false;  // SD 卡是否可用
 
 // 帧同步
 const uint32_t FRAME_TIME_US = 16667;  // ~60 FPS (1000000 / 60)
@@ -517,62 +523,68 @@ bool tryInitSD() {
     sdSPI.begin(SD_SCLK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
 
     if (!SD.begin(SD_CS_PIN, sdSPI, SD_FREQ)) {
-        Serial.println("SD card init failed or not inserted");
-        sdCardAvailable = false;
+        //Serial.println("SD card init failed or not inserted");
+        //sdCardAvailable = false;
         return false;
     }
     
     Serial.println("SD card initialized");
-    sdCardAvailable = true;
+    //sdCardAvailable = true;
     return true;
 }
 
-void initializeSD() {
-    tryInitSD();
-}
+//void initializeSD() {
+//    tryInitSD();
+//}
 
 // ================ ROM 文件扫描 ================
 void scanROMFiles() {
     romList.clear();
     
-    File root = SD.open("/");
-    if (!root) {
-        Serial.println("Failed to open root directory");
-        return;
-    }
-    
-    while (true) {
-        File entry = root.openNextFile();
-        if (!entry) break;
-        
-        if (!entry.isDirectory()) {
-            String filename = entry.name();
-            
-            // 跳过 macOS 元数据文件 (以 ._ 开头)
-            String basename = filename;
-            int lastSlash = filename.lastIndexOf('/');
-            if (lastSlash >= 0) {
-                basename = filename.substring(lastSlash + 1);
-            }
-            if (basename.startsWith("._")) {
-                entry.close();
-                continue;
-            }
-            
-            // 检查是否为 .nes 文件
-            if (filename.endsWith(".nes") || filename.endsWith(".NES") || 
-                filename.endsWith(".Nes")) {
-                // 确保路径以 / 开头
-                if (!filename.startsWith("/")) {
-                    filename = "/" + filename;
-                }
-                romList.push_back(filename);
-                Serial.printf("Found ROM: %s\n", filename.c_str());
+    // 扫描内部分区 /roms2
+    Serial.println("Scanning /roms2...");
+    DIR* dir = opendir("/roms2");
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != NULL) {
+            String filename = entry->d_name;
+            if (filename == "." || filename == "..") continue;
+            if (filename.endsWith(".nes") || filename.endsWith(".NES")) {
+                String fullPath = "/roms2/" + filename;
+                romList.push_back(fullPath);
+                Serial.printf("  Found: %s\n", fullPath.c_str());
             }
         }
-        entry.close();
+        closedir(dir);
+    } else {
+        Serial.println("  /roms2 not available");
     }
-    root.close();
+    
+    // 扫描 SD 卡 /sd
+    Serial.println("Scanning /sd...");
+    dir = opendir("/sd");
+    if (dir) {
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != NULL) {
+            String filename = entry->d_name;
+            if (filename == "." || filename == "..") continue;
+            if (filename.endsWith(".nes") || filename.endsWith(".NES")) {
+                String fullPath = "/sd/" + filename;
+                // 避免重复
+                bool exists = false;
+                for (auto& r : romList) {
+                    if (r == fullPath) { exists = true; break; }
+                }
+                if (!exists) {
+                    romList.push_back(fullPath);
+                    Serial.printf("  Found: %s\n", fullPath.c_str());
+                }
+            }
+        }
+        closedir(dir);
+    } else {
+        Serial.println("  /sd not available");
+    }
     
     Serial.printf("Total ROMs found: %d\n", romList.size());
     
@@ -668,31 +680,31 @@ void drawMainMenu() {
     // 绘制列表边框
     tft.drawRect(listX - 2, listStartY - 2, listWidth + 4, ITEMS_PER_PAGE * itemHeight + 4, MENU_BORDER_COLOR);
     
-    if (romList.empty()) {
-        tft.setTextColor(MENU_HINT_COLOR);
-        tft.setTextSize(1);
-        if (!sdCardAvailable) {
-            // SD 卡未插入
-            tft.setCursor(60, listStartY + 40);
-            tft.print("No SD card detected");
-            tft.setCursor(40, listStartY + 60);
-            tft.print("Please insert SD card with");
-            tft.setCursor(40, listStartY + 75);
-            tft.print(".nes ROM files");
-            tft.setCursor(50, listStartY + 100);
-            tft.setTextColor(MENU_ARROW_COLOR);
-            tft.print("Press A to retry");
-        } else {
-            // SD 卡已插入但没有 ROM
-            tft.setCursor(80, listStartY + 60);
-            tft.print("No ROM files found on SD card");
-            tft.setCursor(90, listStartY + 80);
-            tft.print("Please add .nes files");
-        }
-    } else {
+//    if (romList.empty()) {
+//        tft.setTextColor(MENU_HINT_COLOR);
+//        tft.setTextSize(1);
+//        if (!sdCardAvailable) {
+//            // SD 卡未插入
+//            tft.setCursor(60, listStartY + 40);
+//            tft.print("No SD card detected");
+//            tft.setCursor(40, listStartY + 60);
+//            tft.print("Please insert SD card with");
+//            tft.setCursor(40, listStartY + 75);
+//            tft.print(".nes ROM files");
+//            tft.setCursor(50, listStartY + 100);
+//            tft.setTextColor(MENU_ARROW_COLOR);
+//            tft.print("Press A to retry");
+//        } else {
+//            // SD 卡已插入但没有 ROM
+//            tft.setCursor(80, listStartY + 60);
+//            tft.print("No ROM files found on SD card");
+//            tft.setCursor(90, listStartY + 80);
+//            tft.print("Please add .nes files");
+//        }
+//    } else {
         // 计算分页信息
-        int totalPages = (romList.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
-        int currentPage = scrollOffset / ITEMS_PER_PAGE + 1;
+    int totalPages = (romList.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+    int currentPage = scrollOffset / ITEMS_PER_PAGE + 1;
         
         tft.setTextSize(1);
         
@@ -730,7 +742,7 @@ void drawMainMenu() {
         char pageInfo[16];
         snprintf(pageInfo, sizeof(pageInfo), "%d/%d", currentPage, totalPages);
         tft.print(pageInfo);
-    }
+//    }
     
     // ===== 底部操作提示 =====
     int hintY = 210;
@@ -829,14 +841,11 @@ void handleMenuInput() {
     updateButtons();
     
     if (romList.empty()) {
-        // 无 ROM 或无 SD 卡时，A 键重试 SD 初始化
+        // 无 ROM 或无 SD 卡时，A 键重试
         if (buttons.A) {
             lastButtonTime = now;
-            SD.end();
-            delay(100);
-            if (tryInitSD()) {
-                scanROMFiles();
-            }
+            // 重新扫描所有存储（不依赖 SD 卡）
+            scanROMFiles();  // 直接扫描，不需要先初始化 SD 卡
             drawMainMenu();
         }
         return;
@@ -1158,12 +1167,12 @@ void returnToMainMenu() {
     drawMainMenu();
 }
 
-void loadROM() {
+//void loadROM() {
     // 现在使用菜单选择，这里只是扫描ROM列表
-    if (sdCardAvailable) {
-        scanROMFiles();
-    }
-}
+//    if (sdCardAvailable) {
+//        scanROMFiles();
+//    }
+//}
 
 // ---------------- Audio (I2S) ----------------
 static void initializeAudio() {
@@ -1173,7 +1182,8 @@ static void initializeAudio() {
         .sample_rate = AUDIO_SAMPLE_RATE,
         .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
         .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
-        .communication_format = (i2s_comm_format_t)I2S_COMM_FORMAT_I2S_MSB,
+        //.communication_format = (i2s_comm_format_t)I2S_COMM_FORMAT_I2S,
+        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
         .intr_alloc_flags = 0,
         .dma_buf_count = 4,
         .dma_buf_len = 256,
@@ -1229,17 +1239,63 @@ static void muteAudio() {
     i2s_zero_dma_buffer((i2s_port_t)I2S_NUM);
 }
 
+// 内部 Flash 分区挂载函数
+bool mountInternalStorage() {
+    Serial.println("Mounting internal storage to /roms2...");
+    
+    const char* mount_point = "/roms2";
+    wl_handle_t wl_handle = WL_INVALID_HANDLE;
+    
+    esp_vfs_fat_mount_config_t mount_config = {
+        .format_if_mount_failed = true,
+        .max_files = 5,
+        .allocation_unit_size = 4096
+    };
+    
+    esp_err_t err = esp_vfs_fat_spiflash_mount(
+        mount_point,
+        "storage",
+        &mount_config,
+        &wl_handle
+    );
+    
+    if (err != ESP_OK) {
+        Serial.printf("Failed to mount internal storage: %d\n", err);
+        return false;
+    }
+    
+    Serial.println("✓ Internal storage mounted at /roms2");
+    return true;
+}
 // ================ 主程序 ================
 void setup() {
     initializeSerial();
     initializeScreen();
     initializeButtons();
-    initializeSD();
-    loadROM();  // 扫描 ROM 文件列表
+    //initializeSD();
+    //loadROM();  // 扫描 ROM 文件列表
+	
+    // 1. 挂载内部分区（独立于 SD 卡）
+    Serial.println("=== Mounting internal storage ===");
+    mountInternalStorage();
+    
+    // 2. 尝试初始化 SD 卡（失败也没关系）
+    Serial.println("=== Initializing SD card ===");
+    tryInitSD();  // 这个函数现在只是尝试，不影响后续
+    
+    // 3. 扫描所有 ROM
+    Serial.println("=== Scanning ROM files ===");
+    scanROMFiles();
+    
+    // 显示扫描结果
+    Serial.printf("Found %d ROMs\n", romList.size());
     
     // 初始化音频 (I2S) 并在另一个 CPU core 上运行音频任务
     initializeAudio();
     
+    //修改初始化音量1
+    nes.apu.setVolumeLevel(1);
+	
     // 创建显示任务在 Core 0
     frame_queue = xQueueCreate(1, sizeof(uint8_t));
     if (frame_queue) {
